@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Controle de Despesas</title>
+
+<style>
+body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg, #667eea, #764ba2); margin: 0; padding: 20px; }
+.container { max-width: 950px; margin: auto; background: white; border-radius: 20px; padding: 25px; box-shadow: 0 15px 40px rgba(0,0,0,0.2); }
+h1 { text-align: center; }
+.month-selector { width: 100%; padding: 16px; border-radius: 14px; border: none; font-size: 18px; font-weight: 700; text-align: center; background: #4facfe; color: white; margin-bottom: 20px; cursor: pointer; }
+.form { display: grid; gap: 10px; margin-bottom: 10px; }
+input, button { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #ccc; font-size: 16px; box-sizing: border-box; }
+button { background: #4facfe; color: white; border: none; cursor: pointer; }
+#copyBtn { background: #6c757d; }
+.expense { background: #f9f9f9; padding: 15px; border-radius: 12px; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.expense.selected { outline: 3px solid #f39c12; }
+.expense.paid { background: #eafaf1; text-decoration: line-through; opacity: 0.7; }
+.expense.overdue { background: #ffe6e6; border-left: 5px solid #e74c3c; }
+.info { flex: 1; }
+.value { font-weight: bold; color: #e74c3c; }
+.date { font-size: 13px; font-weight: 600; color: #444; background: #e9eef6; display: inline-block; padding: 5px 10px; border-radius: 8px; margin-top: 5px; }
+.warning { font-size: 12px; font-weight: bold; }
+.warning.red { color: #e74c3c; }
+.warning.yellow { color: #f39c12; }
+.actions { display: flex; flex-direction: column; gap: 6px; width: 110px; }
+.actions button { width: 100%; font-size: 12px; padding: 6px; border-radius: 6px; }
+.pay { background: #2ecc71; }
+.edit { background: #f1c40f; color: white; }
+.delete { background: #e74c3c; }
+.summary { margin-top: 20px; display: grid; gap: 10px; }
+.bar { background: #eee; border-radius: 10px; }
+.bar-inner { padding: 10px; color: white; font-weight: bold; }
+.total { background: #4facfe; }
+.selected { background: #f39c12; }
+.footer { margin-top: 25px; text-align: center; font-size: 13px; color: #888; }
+input[type="date"]:invalid { color: #999; }
+input[type="date"]:invalid::before { content: "Vencimento"; }
+input[type="date"]:focus::before,
+input[type="date"]:valid::before { content: ""; }
+</style>
+<style>
+/* Modal confirmação */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:9999;pointer-events:auto}
+.modal{background:#fff;padding:20px;border-radius:12px;max-width:300px;width:90%;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.3)}
+.modal button{margin:8px 5px;padding:8px 12px;border-radius:8px;border:none;cursor:pointer}
+.modal .ok{background:#e74c3c;color:#fff}
+.modal .cancel{background:#ccc}
+</style>
+</head>
+
+<body>
+
+<!-- LOGIN -->
+<div id="loginScreen" style="position:fixed;inset:0;background:#667eea;display:flex;align-items:center;justify-content:center;z-index:1000;">
+  <div style="background:#fff;padding:25px;border-radius:12px;max-width:300px;width:90%;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.3)">
+    <h2>Login</h2>
+    <input id="user" placeholder="Email" style="margin-bottom:10px;width:100%;padding:10px;border-radius:8px;border:1px solid #ccc;">
+    <input id="pass" type="password" placeholder="Senha" style="margin-bottom:10px;width:100%;padding:10px;border-radius:8px;border:1px solid #ccc;">
+    <button id="loginBtn" style="width:100%;padding:10px;border-radius:8px;border:none;background:#4facfe;color:#fff;">Entrar</button>
+    <p id="loginError" style="color:red;font-size:13px;display:none;">Usuário ou senha inválidos</p>
+  </div>
+</div>
+
+<div id="app" style="display:none;">
+<div class="container">
+    <h1>Controle de Despesas</h1>
+
+    <select id="monthSelect" class="month-selector"></select>
+
+    <div class="form">
+        <input id="desc" placeholder="Descrição">
+        <input id="value" type="number" placeholder="Valor (R$)">
+        <input id="date" type="date" required>
+        <button id="addBtn">Adicionar</button>
+    </div>
+
+    <div class="form">
+        <button id="copyBtn">📋 Copiar mês anterior</button>
+    </div>
+
+    <div id="list"></div>
+
+    <div class="summary">
+        <div class="bar"><div class="bar-inner total" id="monthTotal">Total: R$ 0,00</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <p>Deseja realmente excluir este item?</p>
+    <button type="button" class="ok" id="confirmDelete" onclick="confirmDeleteItem()">Excluir</button>
+    <button type="button" class="cancel" id="cancelDelete" onclick="cancelDeleteItem()">Cancelar</button>
+  </div>
+</div>
+
+</div>
+        <div class="bar"><div class="bar-inner selected" id="selectedTotal">Total Selecionado(s): R$ 0,00</div></div>
+    </div>
+
+    <div class="footer">© 2026 Reginei Back. Todos os direitos reservados.</div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCc28pPAeZUc9QYTx4lkwuWM5vsj1_-YcM",
+  authDomain: "banco-de-dados-a4525.firebaseapp.com",
+  databaseURL: "https://banco-de-dados-a4525-default-rtdb.firebaseio.com",
+  projectId: "banco-de-dados-a4525",
+  storageBucket: "banco-de-dados-a4525.firebasestorage.app",
+  messagingSenderId: "469985981935",
+  appId: "1:469985981935:web:665bd6e7fc95f72458321a",
+  measurementId: "G-67ZKMNMXB1"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const auth = firebase.auth();
+</script>
+
+<script>
+class ExpenseTracker {
+
+    parseDate(dateStr){
+        const [y,m,d] = dateStr.split('-').map(Number);
+        return new Date(y, m-1, d);
+    }
+
+    formatISO(date){
+        return date.toISOString().split('T')[0];
+    }
+
+    constructor() {
+        this.months = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+        this.year = new Date().getFullYear();
+        this.expenses = {};
+        this.current = null;
+        this.init();
+    }
+
+    init() {
+        this.load();
+        this.createMonthSelector();
+        this.switchTab(this.months[new Date().getMonth()] + '-' + this.year);
+        this.events();
+
+        const dateInput = document.getElementById('date');
+        dateInput.addEventListener('focus', () => {
+            if (dateInput.showPicker) dateInput.showPicker();
+        });
+    }
+
+    createMonthSelector(){
+        const select = document.getElementById('monthSelect');
+
+        this.months.forEach(m=>{
+            const option = document.createElement('option');
+            option.value = m + '-' + this.year;
+            option.textContent = m;
+            select.appendChild(option);
+        });
+
+        select.addEventListener('change', e=>{
+            this.switchTab(e.target.value);
+        });
+    }
+
+    clearInputs() {
+        document.getElementById('desc').value = '';
+        document.getElementById('value').value = '';
+        document.getElementById('date').value = '';
+    }
+
+    events() {
+        document.addEventListener('click', e => {
+            if (e.target.id === 'addBtn') this.add();
+            if (e.target.classList.contains('delete')) this.del(e.target.dataset.id);
+            if (e.target.classList.contains('pay')) this.togglePaid(e.target.dataset.id);
+            if (e.target.classList.contains('edit')) this.edit(e.target.dataset.id);
+            if (e.target.id === 'copyBtn') this.copyPreviousMonth();
+
+            const card = e.target.closest('.expense');
+            if (card && !e.target.classList.contains('delete') &&
+                !e.target.classList.contains('edit') &&
+                !e.target.classList.contains('pay')) {
+                this.toggleSelect(card.dataset.id);
+            }
+        });
+    }
+
+    switchTab(key) {
+        this.current = key;
+        document.getElementById('monthSelect').value = key;
+        this.render();
+    }
+
+    add() {
+        const desc = document.getElementById('desc').value.trim();
+        const value = parseFloat(document.getElementById('value').value);
+        const date = document.getElementById('date').value;
+
+        if (!desc || !value || !date) return alert('Preencha tudo!');
+
+        if (!this.expenses[this.current]) this.expenses[this.current] = [];
+
+        this.expenses[this.current].push({
+            id: Date.now()+Math.random(),
+            desc,value,date,
+            selected:false,paid:false
+        });
+
+        this.save();
+        this.clearInputs();
+    }
+
+    getDaysStatus(date){
+        const t=new Date(); const d=this.parseDate(date);
+        t.setHours(0,0,0,0); d.setHours(0,0,0,0);
+        const diff=Math.ceil((d-t)/(1000*60*60*24));
+
+        if(diff===0) return {text:'Hoje',class:'yellow',overdue:false};
+        if(diff===1) return {text:'Amanhã',class:'yellow',overdue:false};
+        if(diff<0) return {text:`Vencida há ${Math.abs(diff)} dias`,class:'red',overdue:true};
+        if(diff<=3) return {text:`Vence em ${diff} dias`,class:'yellow',overdue:false};
+
+        return {text:`Vence em ${diff} dias`,class:'',overdue:false};
+    }
+
+    render(){
+        let list = [...(this.expenses[this.current] || [])];
+        list.sort((a,b)=> this.parseDate(a.date) - this.parseDate(b.date));
+
+        const div=document.getElementById('list');
+
+        div.innerHTML=list.map(e=>{
+            const s=this.getDaysStatus(e.date);
+
+            return `
+            <div class="expense ${e.selected?'selected':''} ${e.paid?'paid':''} ${s.overdue&&!e.paid?'overdue':''}" data-id="${e.id}">
+                <div class="info">
+                    <strong>${e.desc}</strong>
+                    <div class="date">${this.formatDate(e.date)}</div>
+                    ${!e.paid?`<div class="warning ${s.class}">${s.text}</div>`:''}
+                </div>
+                <div class="value">R$ ${e.value.toFixed(2).replace('.',',')}</div>
+                <div class="actions">
+                    <button class="pay" data-id="${e.id}">Pago</button>
+                    <button class="edit" data-id="${e.id}">✏️</button>
+                    <button class="delete" data-id="${e.id}">🗑</button>
+                </div>
+            </div>`;
+        }).join('');
+
+        this.updateTotals();
+    }
+
+    formatDate(d){
+        const data = this.parseDate(d);
+        return data.toLocaleDateString('pt-BR');
+    }
+
+    toggleSelect(id){
+        const i=this.expenses[this.current].find(e=>e.id==id);
+        if(!i) return;
+        i.selected=!i.selected;
+        this.save();
+    }
+
+    togglePaid(id){
+        const i=this.expenses[this.current].find(e=>e.id==id);
+        if(!i) return;
+        i.paid=!i.paid;
+        this.save();
+    }
+
+    del(id){
+        this.toDelete = id;
+        document.getElementById('modal').style.display = 'flex';
+    }
+
+    edit(id){
+        const i=this.expenses[this.current].find(e=>e.id==id);
+        if(!i) return;
+
+        const desc=prompt("Descrição:",i.desc);
+        const value=prompt("Valor:",i.value);
+        const date=prompt("Data (AAAA-MM-DD):",i.date);
+
+        if(!desc||!value||!date) return;
+
+        i.desc=desc;
+        i.value=parseFloat(value);
+        i.date=date;
+
+        this.save();
+    }
+
+    copyPreviousMonth(){
+        const i=this.months.findIndex(m=>this.current.startsWith(m));
+        if(i===0) return alert("Sem mês anterior");
+
+        const prev=this.months[i-1]+'-'+this.year;
+        if(!this.expenses[prev]) return alert("Sem dados");
+
+        this.expenses[this.current]=this.expenses[prev].map(e=>{
+            const d = this.parseDate(e.date);
+            d.setMonth(d.getMonth()+1);
+            return {
+                ...e,
+                id:Date.now()+Math.random(),
+                date:this.formatISO(d),
+                selected:false,
+                paid:false
+            }
+        });
+
+        this.save();
+    }
+
+    updateTotals(){
+        const list=this.expenses[this.current]||[];
+        const total=list.reduce((s,e)=>s+e.value,0);
+        const sel=list.filter(e=>e.selected).reduce((s,e)=>s+e.value,0);
+
+        document.getElementById('monthTotal').textContent='Total: R$ '+total.toFixed(2).replace('.',',');
+        document.getElementById('selectedTotal').textContent='Total Selecionado(s): R$ '+sel.toFixed(2).replace('.',',');
+    }
+
+    save(){
+        db.ref('expenses/'+this.current).set(this.expenses[this.current]);
+    }
+
+    load(){
+        db.ref('expenses').on('value', snapshot => {
+            const data = snapshot.val();
+            this.expenses = data || {};
+            this.render();
+        });
+    }
+}
+
+const tracker=new ExpenseTracker();
+window.tracker = tracker;
+
+// ENTER funciona
+window.addEventListener('keydown', e=>{
+    if(e.key === 'Enter'){
+        if(document.getElementById('loginScreen').style.display !== 'none'){
+            document.getElementById('loginBtn').click();
+        } else {
+            document.getElementById('addBtn').click();
+        }
+    }
+});
+
+// Firebase Auth (base pronta)
+auth.onAuthStateChanged(user=>{
+    if(user){
+        document.getElementById('loginScreen').style.display = 'none';
+        document.getElementById('app').style.display = 'block';
+
+        // 🔥 FORÇA recarregar dados após login
+        tracker.load();
+
+    } else {
+        document.getElementById('loginScreen').style.display = 'flex';
+        document.getElementById('app').style.display = 'none';
+    }
+});
+
+
+
+// Modal controle
+function cancelDeleteItem(){
+    document.getElementById('modal').style.display = 'none';
+    window.tracker.toDelete = null;
+}
+
+function confirmDeleteItem(){
+    if(window.tracker.toDelete){
+        window.tracker.expenses[window.tracker.current] = window.tracker.expenses[window.tracker.current].filter(e=>e.id!=window.tracker.toDelete);
+        window.tracker.save();
+    }
+    document.getElementById('modal').style.display = 'none';
+    window.tracker.toDelete = null;
+}
+
+document.getElementById('confirmDelete').onclick = ()=>{
+    if(tracker.toDelete){
+        tracker.expenses[tracker.current] = tracker.expenses[tracker.current].filter(e=>e.id!=tracker.toDelete);
+        tracker.save();
+    }
+    modal.style.display = 'none';
+    tracker.toDelete = null;
+};
+</script>
+
+</div>
+
+<script>
+// LOGIN (novo)
+loginBtn.onclick = ()=>{
+    const email = document.getElementById('user').value.trim();
+    const senha = document.getElementById('pass').value.trim();
+
+    if(!email || !senha){
+        const err = document.getElementById('loginError');
+        err.textContent = 'Preencha email e senha';
+        err.style.display = 'block';
+        return;
+    }
+
+    auth.signInWithEmailAndPassword(email, senha)
+    .then(()=>{
+        document.getElementById('loginScreen').style.display = 'none';
+        document.getElementById('app').style.display = 'block';
+    })
+    .catch(()=>{
+        const err = document.getElementById('loginError');
+        err.textContent = 'Login inválido';
+        err.style.display = 'block';
+    });
+};
+</script>
+
+</body>
+</html>
