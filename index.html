@@ -6,8 +6,8 @@
 <title>Controle de Despesas</title>
 
 <style>
-body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg, #667eea, #764ba2); margin: 0; padding: 20px; }
-.container { max-width: 950px; margin: auto; background: white; border-radius: 20px; padding: 25px; box-shadow: 0 15px 40px rgba(0,0,0,0.2); }
+body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg, #667eea, #764ba2); margin: 0; padding: 20px; min-height: 100vh;}
+.container {max-width: 950px; margin: 20px auto; background: white; border-radius: 20px; padding: 25px; box-shadow: 0 15px 40px rgba(0,0,0,0.2); display: block;}
 h1 { text-align: center; }
 .month-selector { width: 100%; padding: 16px; border-radius: 14px; border: none; font-size: 18px; font-weight: 700; text-align: center; background: #4facfe; color: white; margin-bottom: 20px; cursor: pointer; }
 .form { display: grid; gap: 10px; margin-bottom: 10px; }
@@ -34,8 +34,18 @@ button { background: #4facfe; color: white; border: none; cursor: pointer; }
 .bar-inner { padding: 10px; color: white; font-weight: bold; }
 .total { background: #4facfe; }
 .selected { background: #f39c12; }
-.footer { margin-top: 25px; text-align: center; font-size: 13px; color: #888; }
-input[type="date"]:invalid { color: #999; }
+.footer {
+    margin: 20px auto;
+    padding: 6px 30px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 500;
+    color: #444;
+    background: #f8f9fa;
+    border-radius: 15px;
+
+    width: fit-content; /* 👈 FAZ A BARRA FICAR SÓ DO TAMANHO DO TEXTO */
+}
 input[type="date"]:invalid::before { content: "Vencimento"; }
 input[type="date"]:focus::before,
 input[type="date"]:valid::before { content: ""; }
