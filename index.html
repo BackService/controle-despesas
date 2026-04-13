@@ -83,14 +83,31 @@ input[type="date"]:valid::before { content: ""; }
     <div id="list"></div>
 
     <div class="summary">
-        <div class="bar"><div class="bar-inner total" id="monthTotal">Total: R$ 0,00</div>
+        <div class="bar">
+  <div class="bar-inner total" id="monthTotal">Total: R$ 0,00</div>
+</div>
 
 <!-- Modal -->
+<!-- Modal excluir -->
 <div class="modal-overlay" id="modal">
   <div class="modal">
     <p>Deseja realmente excluir este item?</p>
-    <button type="button" class="ok" id="confirmDelete" onclick="confirmDeleteItem()">Excluir</button>
-    <button type="button" class="cancel" id="cancelDelete" onclick="cancelDeleteItem()">Cancelar</button>
+    <button type="button" class="ok" onclick="confirmDeleteItem()">Excluir</button>
+    <button type="button" class="cancel" onclick="cancelDeleteItem()">Cancelar</button>
+  </div>
+</div>
+
+<!-- 👇 COLE AQUI O MODAL DE EDIÇÃO 👇 -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <h3>Editar despesa</h3>
+
+    <input id="editDesc" placeholder="Descrição" style="margin-bottom:8px;width:100%;padding:8px;border-radius:8px;border:1px solid #ccc;">
+    <input id="editValue" type="number" placeholder="Valor" style="margin-bottom:8px;width:100%;padding:8px;border-radius:8px;border:1px solid #ccc;">
+    <input id="editDate" type="date" style="margin-bottom:10px;width:100%;padding:8px;border-radius:8px;border:1px solid #ccc;">
+
+    <button onclick="saveEdit()" style="background:#2ecc71;color:#fff;">Salvar</button>
+    <button onclick="cancelEdit()" style="background:#ccc;">Cancelar</button>
   </div>
 </div>
 
@@ -142,7 +159,6 @@ class ExpenseTracker {
     }
 
     init() {
-        this.load();
         this.createMonthSelector();
         this.switchTab(this.months[new Date().getMonth()] + '-' + this.year);
         this.events();
@@ -263,17 +279,27 @@ class ExpenseTracker {
     }
 
     toggleSelect(id){
-        const i=this.expenses[this.current].find(e=>e.id==id);
-        if(!i) return;
-        i.selected=!i.selected;
-        this.save();
-    }
+    const list = this.expenses[this.current] || [];
 
-    togglePaid(id){
-        const i=this.expenses[this.current].find(e=>e.id==id);
-        if(!i) return;
-        i.paid=!i.paid;
-        this.save();
+    const i = list.find(e=>e.id==id);
+    if(!i) return;
+
+    i.selected = !i.selected;
+
+    this.save();
+    this.render(); // 👈 ESSENCIAL
+}
+
+togglePaid(id){
+    const list = this.expenses[this.current] || [];
+
+    const i = list.find(e=>e.id==id);
+    if(!i) return;
+
+    i.paid = !i.paid;
+
+    this.save();
+
     }
 
     del(id){
@@ -282,21 +308,17 @@ class ExpenseTracker {
     }
 
     edit(id){
-        const i=this.expenses[this.current].find(e=>e.id==id);
-        if(!i) return;
+        const list = this.expenses[this.current] || [];
+        const i = list.find(e=>e.id==id);
 
-        const desc=prompt("Descrição:",i.desc);
-        const value=prompt("Valor:",i.value);
-        const date=prompt("Data (AAAA-MM-DD):",i.date);
+    this.editingId = id;
 
-        if(!desc||!value||!date) return;
+    document.getElementById('editDesc').value = i.desc;
+    document.getElementById('editValue').value = i.value;
+    document.getElementById('editDate').value = i.date;
 
-        i.desc=desc;
-        i.value=parseFloat(value);
-        i.date=date;
-
-        this.save();
-    }
+    document.getElementById('editModal').style.display = 'flex';
+}
 
     copyPreviousMonth(){
         const i=this.months.findIndex(m=>this.current.startsWith(m));
@@ -329,17 +351,28 @@ class ExpenseTracker {
         document.getElementById('selectedTotal').textContent='Total Selecionado(s): R$ '+sel.toFixed(2).replace('.',',');
     }
 
-    save(){
-        db.ref('expenses/'+this.current).set(this.expenses[this.current]);
-    }
+  save(){
+    if(!auth.currentUser) return;
+    const uid = auth.currentUser.uid;
+    db.ref('expenses/' + uid + '/' + this.current)
+      .set(this.expenses[this.current]);
+}
 
     load(){
-        db.ref('expenses').on('value', snapshot => {
-            const data = snapshot.val();
-            this.expenses = data || {};
-            this.render();
-        });
+    const uid = auth.currentUser.uid;
+
+    if(this.listener){
+        this.listener.off(); // remove listener antigo
     }
+
+    this.listener = db.ref('expenses/' + uid);
+
+    this.listener.on('value', snapshot => {
+        const data = snapshot.val();
+        this.expenses = data || {};
+        this.render();
+    });
+}
 }
 
 const tracker=new ExpenseTracker();
@@ -362,8 +395,7 @@ auth.onAuthStateChanged(user=>{
         document.getElementById('loginScreen').style.display = 'none';
         document.getElementById('app').style.display = 'block';
 
-        // 🔥 FORÇA recarregar dados após login
-        tracker.load();
+        tracker.load(); // ✅ COLOQUE AQUI
 
     } else {
         document.getElementById('loginScreen').style.display = 'flex';
@@ -380,25 +412,56 @@ function cancelDeleteItem(){
 }
 
 function confirmDeleteItem(){
-    if(window.tracker.toDelete){
-        window.tracker.expenses[window.tracker.current] = window.tracker.expenses[window.tracker.current].filter(e=>e.id!=window.tracker.toDelete);
-        window.tracker.save();
-    }
+    if(!window.tracker.toDelete) return;
+
+    const list = window.tracker.expenses[window.tracker.current] || [];
+
+    window.tracker.expenses[window.tracker.current] =
+        list.filter(e => e.id != window.tracker.toDelete);
+
+    window.tracker.save();
+
     document.getElementById('modal').style.display = 'none';
     window.tracker.toDelete = null;
 }
 
-document.getElementById('confirmDelete').onclick = ()=>{
-    if(tracker.toDelete){
-        tracker.expenses[tracker.current] = tracker.expenses[tracker.current].filter(e=>e.id!=tracker.toDelete);
-        tracker.save();
-    }
-    modal.style.display = 'none';
-    tracker.toDelete = null;
-};
-</script>
+/* 👇 COLE AQUI 👇 */
 
-</div>
+function saveEdit(){
+    const id = window.tracker.editingId;
+    if(!id) return;
+
+    const desc = document.getElementById('editDesc').value.trim();
+    const value = parseFloat(document.getElementById('editValue').value);
+    const date = document.getElementById('editDate').value;
+
+    if(!desc || !value || !date){
+        alert("Preencha tudo!");
+        return;
+    }
+
+    const list = window.tracker.expenses[window.tracker.current] || [];
+
+    const item = list.find(e=>e.id==id);
+
+    if(!item) return;
+
+    item.desc = desc;
+    item.value = value;
+    item.date = date;
+
+    window.tracker.save();
+
+    document.getElementById('editModal').style.display = 'none';
+    window.tracker.editingId = null;
+}
+
+function cancelEdit(){
+    document.getElementById('editModal').style.display = 'none';
+    window.tracker.editingId = null;
+}
+
+</script>
 
 <script>
 // LOGIN (novo)
@@ -418,11 +481,13 @@ loginBtn.onclick = ()=>{
         document.getElementById('loginScreen').style.display = 'none';
         document.getElementById('app').style.display = 'block';
     })
-    .catch(()=>{
-        const err = document.getElementById('loginError');
-        err.textContent = 'Login inválido';
-        err.style.display = 'block';
-    });
+    .catch((error)=>{
+    console.error(error); // 👈 MOSTRA O ERRO REAL
+
+    const err = document.getElementById('loginError');
+    err.textContent = error.message;
+    err.style.display = 'block';
+});
 };
 </script>
 
